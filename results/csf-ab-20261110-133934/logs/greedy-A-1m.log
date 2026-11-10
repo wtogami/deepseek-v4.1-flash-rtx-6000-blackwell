@@ -1,0 +1,1 @@
+ The function should take an integer n as input and return the sum. If n is less than or equal to 0, return 0. Example: sum_first_n(5) should return 15 (1+2+3+4+5)." }, "outputs": [], "source": [] } ], "metadata": { "kernelspec": { "display_name": "Python 3", "language": "python", "name": "python

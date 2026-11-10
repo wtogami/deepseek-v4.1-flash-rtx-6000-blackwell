@@ -1,0 +1,1 @@
+ If n is not positive, return 0. Then, write a Python function named sum_first_n_odd that returns the sum of the first n positive odd integers. If n is not positive, return 0. Finally, write a Python function named sum_first_n_even that returns the sum of the first n positive even integers. If n is not positive, return 0.

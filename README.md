@@ -26,11 +26,59 @@ ENGRAM_TABLE_MEMORY=disk ./start.sh # disk-backed Engram (option; RAM is default
 The API model is `DeepSeek-V4.1-Flash` on `0.0.0.0:8000`. Readiness is polled
 on `/health` (503 while loading, 200 when ready).
 
+## CSF checkpoint (lossless FP4 scale compression)
+
+The original checkpoint stores the routed-expert UE8M0 scale planes
+uncompressed. The CSF container compresses them losslessly (16.99 GB ->
+2.31 GB; the weights themselves are byte-identical and the original shards
+can be restored bit-exactly). It is not a smaller quantization and no
+experts are removed; the freed GPU memory becomes KV cache.
+
+Download the pinned container (495.6 GB) to the extra NVMe and verify it:
+
+```bash
+./scripts/csf-download.sh
+```
+
+Serve it:
+
+```bash
+CSF=1 ./start.sh
+CSF=1 MAX_MODEL_LEN=131072 ./start.sh
+```
+
+`CSF_DIRECTORY` overrides the default path
+(`/nvme1/models/DeepSeek-V4.1-Flash-1017-lossless-CSF`). The image's
+`ds41-flash` profile already ships the matching `checkpoint: csf` variant
+(`mxfp4_csf` quantization and load-format); the launcher derives it from the
+container's `manifest.json`. License: Local Inference Lab License 1.0 (the
+base weights are MIT).
+
+### CSF A/B scripts
+
+```bash
+./scripts/csf-switch.sh {original|csf} [--max-model-len N] [--dry-run]
+./scripts/csf-ab.sh [--dry-run] [--resume RUN_ID]
+```
+
+`csf-ab.sh` runs four arms (original/CSF at 131072 and at 1M), performs a
+greedy determinism probe per arm, runs the KK protocol, writes
+`results/<run>/csf-AB.md`, and leaves the winner running at 1M. Both scripts
+require an unlimited `RLIMIT_MEMLOCK` (RAM Engram); a plain login only gets
+systemd's `DefaultLimitMEMLOCK` (8 GiB), so run them from a shell created with
+`prlimit --memlock=unlimited:unlimited -- runuser -u $(id -un) -- bash`.
+Its knobs are `KK_CAP` (`131072`), `ONE_M_CAP` (`-1`), `ORIGINAL_DIRECTORY`,
+`CSF_DIRECTORY`, `POWER_LIMIT` (`325`) and `ALLOW_POWER_MISMATCH`.
+
 ## Environment
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `ENGRAM_TABLE_MEMORY` | `ram` | `ram` or `disk`; never switched silently |
+| `CSF` | `0` | `1` serves the lossless FP4-CSF container instead of the original checkpoint |
+| `CSF_DIRECTORY` | `/nvme1/models/DeepSeek-V4.1-Flash-1017-lossless-CSF` | CSF container path (used when `CSF=1`) |
+| `POWER_LIMIT` | `325` | W per GPU that `csf-ab.sh` requires for both arms |
+| `ALLOW_POWER_MISMATCH` | `0` | `1` lets `csf-ab.sh` run with off-target power limits |
 | `MAX_MODEL_LEN` | `-1` | recipe default; `131072` for the KK comparison |
 | `MAX_NUM_SEQS` | `32` | request slots |
 | `MAX_NUM_BATCHED_TOKENS` | `4096` | |
@@ -176,6 +224,11 @@ methodology. Everything this project changed is listed here:
   ceiling to cover the whole 96 KiB..6 MiB band (the image profile ships
   `off`). Measured +4.8% C8 verifier steps/s; prefill and C1 unchanged
   (`results/twoshot-AB.md`).
+- **Optional CSF checkpoint.** `CSF=1` serves the lossless FP4-CSF container
+  (compressed expert scales, byte-identical weights) for more KV capacity;
+  `scripts/csf-download.sh`, `scripts/csf-switch.sh`, and
+  `scripts/csf-ab.sh` download, switch, and A/B it against the original
+  checkpoint.
 - **Host P2P prerequisites documented and required.** Resizable BAR with
   BAR1 >= 96 GiB, `ForceP2P=0x11;RMForceP2PType=1;RMPcieP2PType=2;GrdmaPciTopoCheckOverride=1;EnableResizableBar=1`,
   and `nvidia_uvm uvm_disable_hmm=1`. Without them the B12X oneshot/two-shot

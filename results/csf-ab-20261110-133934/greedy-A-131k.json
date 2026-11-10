@@ -1,0 +1,17 @@
+{
+ "prompt": "Write a Python function named sum_first_n that returns the sum of the first n positive integers.",
+ "text": " If n is not positive, return 0.",
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 19,
+  "total_tokens": 30,
+  "completion_tokens": 11,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "created_cache_tokens": null,
+   "multimodal_tokens": null
+  },
+  "completion_tokens_details": null
+ },
+ "seconds": 0.9417449970060261
+}

@@ -1,0 +1,17 @@
+{
+ "prompt": "Write a Python function named sum_first_n that returns the sum of the first n positive integers.",
+ "text": " The function should take an integer n as input and return the sum. If n is less than or equal to 0, return 0. Example: sum_first_n(5) should return 15 (1+2+3+4+5).\" }, \"outputs\": [], \"source\": [] } ], \"metadata\": { \"kernelspec\": { \"display_name\": \"Python 3\", \"language\": \"python\", \"name\": \"python",
+ "finish_reason": "length",
+ "usage": {
+  "prompt_tokens": 19,
+  "total_tokens": 115,
+  "completion_tokens": 96,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "created_cache_tokens": null,
+   "multimodal_tokens": null
+  },
+  "completion_tokens_details": null
+ },
+ "seconds": 1.2402667790011037
+}

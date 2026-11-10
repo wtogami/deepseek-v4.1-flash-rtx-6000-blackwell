@@ -23,6 +23,11 @@ IMAGE_TAG="${IMAGE:-ghcr.io/local-inference-lab/vllm:karmic-kraken-beta}"
 PORT="${PORT:-8000}"
 BIND_ADDRESS="${BIND_ADDRESS:-0.0.0.0}"
 MODEL_DIRECTORY="${MODEL_DIRECTORY:-$HOME/models/DeepSeek-V4.1-Flash}"
+# CSF=1 serves the lossless FP4-CSF container instead of the original
+# checkpoint. The LIL launcher detects the container's manifest.json and
+# applies the mxfp4_csf quantization/load-format variant automatically.
+CSF="${CSF:-0}"
+CSF_DIRECTORY="${CSF_DIRECTORY:-/nvme1/models/DeepSeek-V4.1-Flash-1017-lossless-CSF}"
 ENGRAM_TABLE_MEMORY="${ENGRAM_TABLE_MEMORY:-ram}"
 MAX_MODEL_LEN="${MAX_MODEL_LEN:--1}"
 MAX_NUM_SEQS="${MAX_NUM_SEQS:-32}"
@@ -90,11 +95,35 @@ if ! command -v "$ENGINE" >/dev/null 2>&1; then
 fi
 
 # ------------------------------------------------------------------ checkpoint
-# The checkpoint is a flat directory of real files (hardlinked from the HF
-# cache), so there is no mirror step; validate instead.
-if [[ ! -s "$MODEL_DIRECTORY/model.safetensors.index.json" ]]; then
-  echo "Checkpoint not found: $MODEL_DIRECTORY/model.safetensors.index.json is missing or empty." >&2
-  echo "Set MODEL_DIRECTORY to the flat DeepSeek-V4.1-Flash directory." >&2
+# Two supported layouts:
+#   flat  the original checkpoint (model.safetensors.index.json at the root)
+#   csf   the lossless FP4-CSF container (manifest.json + metadata/ + tensors/)
+# CSF=1 selects the CSF container path; the launcher derives the mxfp4_csf
+# quantization and load-format from manifest.json.
+case "$CSF" in
+  0|1) ;;
+  *) echo "CSF must be 0 or 1 (got: $CSF)" >&2; exit 2 ;;
+esac
+if [[ "$CSF" == 1 ]]; then
+  MODEL_DIRECTORY="$CSF_DIRECTORY"
+fi
+
+CHECKPOINT_LAYOUT=""
+if [[ -s "$MODEL_DIRECTORY/manifest.json" \
+      && -s "$MODEL_DIRECTORY/metadata/model.safetensors.index.json" \
+      && -d "$MODEL_DIRECTORY/tensors" ]]; then
+  CHECKPOINT_LAYOUT=csf
+elif [[ -s "$MODEL_DIRECTORY/model.safetensors.index.json" ]]; then
+  CHECKPOINT_LAYOUT=flat
+else
+  echo "Checkpoint not found in $MODEL_DIRECTORY" >&2
+  echo "Expected either model.safetensors.index.json (flat checkpoint) or" >&2
+  echo "manifest.json + metadata/model.safetensors.index.json + tensors/ (CSF container)." >&2
+  echo "Set MODEL_DIRECTORY, or use CSF=1 with CSF_DIRECTORY pointing at the CSF download." >&2
+  exit 2
+fi
+if [[ "$CSF" == 1 && "$CHECKPOINT_LAYOUT" != csf ]]; then
+  echo "CSF=1 but $MODEL_DIRECTORY is not a CSF container." >&2
   exit 2
 fi
 
@@ -107,15 +136,26 @@ case "$ENGRAM_TABLE_MEMORY" in
   *) echo "ENGRAM_TABLE_MEMORY must be ram or disk (got: $ENGRAM_TABLE_MEMORY)" >&2; exit 2 ;;
 esac
 
-need_bytes="$(MODEL_DIRECTORY="$MODEL_DIRECTORY" python3 - <<'PY'
-import json, os
+need_bytes="$(MODEL_DIRECTORY="$MODEL_DIRECTORY" CHECKPOINT_LAYOUT="$CHECKPOINT_LAYOUT" python3 - <<'PY'
+import json, os, sys
 from pathlib import Path
 root = Path(os.environ['MODEL_DIRECTORY'])
-index = json.loads((root / 'model.safetensors.index.json').read_text())['weight_map']
-shards = {index[f'layers.{n}.engram.embed.weight'] for n in (1, 14)}
-print(sum((root / s).stat().st_size for s in shards) + 24 * 2**30)
+layout = os.environ['CHECKPOINT_LAYOUT']
+index_path = (root / 'metadata' / 'model.safetensors.index.json') if layout == 'csf' else (root / 'model.safetensors.index.json')
+shard_root = (root / 'tensors') if layout == 'csf' else root
+try:
+    index = json.loads(index_path.read_text())['weight_map']
+    shards = {index[f'layers.{n}.engram.embed.weight'] for n in (1, 14)}
+    sizes = [(shard_root / s).stat().st_size for s in shards]
+except FileNotFoundError as exc:
+    print(f"Engram shard not present yet: {exc.filename}", file=sys.stderr)
+    sys.exit(3)
+except (KeyError, ValueError) as exc:
+    print(f"Checkpoint index has no usable Engram entry: {exc}", file=sys.stderr)
+    sys.exit(3)
+print(sum(sizes) + 24 * 2**30)
 PY
-)" || { echo "Cannot read the checkpoint index in $MODEL_DIRECTORY" >&2; exit 2; }
+)" || { echo "Cannot size the Engram tables from the checkpoint index in $MODEL_DIRECTORY" >&2; exit 2; }
 
 # The container's locked-memory ceiling is capped at the host user's
 # RLIMIT_MEMLOCK hard limit: --ulimit memlock=-1:-1 (with IPC_LOCK) cannot raise
@@ -378,6 +418,7 @@ case "$state" in
 esac
 
 mkdir -p "$STATE_DIRECTORY"
+echo "  checkpoint: $CHECKPOINT_LAYOUT ($MODEL_DIRECTORY)" >&2
 echo "  engram: $ENGRAM_TABLE_MEMORY (host memlock hard limit: $memlock_hard)" >&2
 echo "  driver: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1 || echo unknown)" >&2
 echo "  two-shot: TWOSHOT_MB=$TWOSHOT_MB (profile default is off; off restores it)" >&2

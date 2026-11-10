@@ -107,12 +107,35 @@ host memory are the larger expected penalties (the Gen4 vLLM TP3 datapoint is
 
 ## Expected outcome
 
-Rough expectation if resumed without the memory offset: ~150-190 tok/s C1,
-~500-650 tok/s C8 at 32K, ~8-10k tok/s prefill. That would be below our
-four-GPU vLLM baseline, so the experiment is a measurement of how much of the
-3-GPU Flare result survives Gen4/DDR4, not an expected upgrade. Go/no-go after
-export: if Flare is within ~10-15% of the 4-GPU vLLM numbers, consider it for
-the freed GPU; otherwise document and revert.
+The recipe's own README is explicit: a similar build at **stock memory clock
+(13,365 MHz) and PCIe Gen4 measured roughly half its per-step speed** on the
+vLLM build, mostly from memory clock and slower GPU-to-GPU links. The +6000
+offset raises the memory clock to 16,365 MHz; we are not applying it.
+
+So the realistic expectation is well below the published 254/805 tok/s —
+plausibly ~110-150 tok/s C1, ~300-450 tok/s C8 at 32K, and ~6-8k tok/s
+prefill. That would be below our four-GPU vLLM baseline (220/745/10.7k), so
+this is a measurement of how much of the 3-GPU Flare result survives
+Gen4/DDR4/stock clocks, not an expected upgrade. Go/no-go after export: if
+Flare is within ~10-15% of the 4-GPU vLLM numbers, consider it for the freed
+GPU; otherwise document and revert.
+
+## Staged implementation (2026-11-10)
+
+Everything that does not need the engine stopped is in place:
+
+- `scripts/flare-tp3/` — download, build, checkpoint-view, export, serve,
+  bench, audit wrappers. `audit.sh` is read-only.
+- Recipe repo at `~/flare-tp3/recipe` (20261105 folder; identical to the
+  pinned commit except README).
+- NVIDIA Flare at `~/flare-tp3/flare` @ `78b18b1c`; `source.patch` applies
+  cleanly; four FlashInfer TP3 patches staged.
+- `llm-inference-bench` v0.9.1 cloned with its venv.
+- NVIDIA MXFP4 Engram shards 47-48 downloading to `/nvme1/models/`.
+- CUDA 13.2.1 devel image pull staged.
+
+Not done (waiting for the user): build, checkpoint view, export, serve,
+benchmark. The engine is still running the original checkpoint at 1M.
 
 ## Resume checklist
 

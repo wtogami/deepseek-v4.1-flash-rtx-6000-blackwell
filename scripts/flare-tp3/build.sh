@@ -108,6 +108,10 @@ fi
 
 uv sync --locked --extra prepare --extra test
 
+# Bundled PyTorch Inductor / Triton fixes; setup_preparation.py runs the same
+# module after syncing, and preparation imports it before touching a checkpoint.
+uv run --no-sync python -m ignition.patches
+
 SP=$(.venv/bin/python -c 'import flashinfer, pathlib; print(pathlib.Path(flashinfer.__file__).parents[1])')
 echo "FlashInfer site-packages: $SP"
 for p in /recipe/tp3-patches/*.patch; do

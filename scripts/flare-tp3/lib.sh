@@ -15,6 +15,7 @@ CKPT_VIEW="${CKPT_VIEW:-$FLARE_TP3_ROOT/ckpt}"
 DS_DIR="${DS_DIR:-$HOME/models/DeepSeek-V4.1-Flash}"
 NVFP4_DIR="${NVFP4_DIR:-/nvme1/models/DeepSeek-V4.1-Flash-1017-NVFP4}"
 FLARE_CACHE="${FLARE_CACHE:-$HOME/.cache/flare}"
+FLARE_CONFIG="${FLARE_CONFIG:-$FLARE_TP3_ROOT/config}"
 BENCH_DIR="${BENCH_DIR:-$FLARE_TP3_ROOT/llm-inference-bench}"
 CUDA_IMAGE="${CUDA_IMAGE:-docker.io/nvidia/cuda:13.2.1-devel-ubuntu24.04}"
 GPUS="${GPUS:-1,2,3}"
@@ -23,7 +24,7 @@ POWER_LIMIT="${POWER_LIMIT:-325}"
 PORT="${PORT:-15015}"
 FLARE_CONTAINER_NAME="${FLARE_CONTAINER_NAME:-flare-tp3}"
 STATE_DIR="${STATE_DIR:-$PROJECT_DIR/state/logs}"
-mkdir -p "$STATE_DIR"
+mkdir -p "$STATE_DIR" "$FLARE_CONFIG"
 
 RECIPE_REPO_URL="https://github.com/BoxTops4Coochie/RTX-PRO-6000-TP3-Inference-Recipes.git"
 RECIPE_COMMIT="a5269231a570286898ba041690d524fdf1769c7e"
@@ -90,6 +91,53 @@ gpu_compute_apps() {
 
 free_gib() {
   df -Pk "$1" | awk 'NR==2 {printf "%d", $4/1024/1024}'
+}
+
+seed_trust() {
+  # Flare asks once, interactively, to trust the local development publisher.
+  # In a detached container there is no terminal, so record the acceptance from
+  # the profile that `ignition export` wrote beside the config. The store schema
+  # is the one flare's trust.rs reads: fingerprint = sha256 of the raw key bytes.
+  python3 - "$FLARE_CONFIG" <<'PY'
+import hashlib, json, sys
+from pathlib import Path
+cfg = Path(sys.argv[1])
+profile = cfg / "development-publisher.json"
+store = cfg / "trust.toml"
+if not profile.is_file():
+    print(f"no publisher profile at {profile}; flare will prompt on first run")
+    sys.exit(0)
+rows = json.loads(profile.read_text())
+rows = rows if isinstance(rows, list) else [rows]
+for row in rows:
+    key = row.get("public_key")
+    if isinstance(key, str):
+        raw = bytes.fromhex(key)
+    elif isinstance(key, list):
+        raw = bytes(key)
+    else:
+        continue
+    if len(raw) != 32:
+        continue
+    fp = hashlib.sha256(raw).hexdigest()
+    ns = row.get("namespace") or "local-development"
+    name = row.get("name") or "Local development signer"
+    if store.is_file() and fp in store.read_text():
+        print(f"trust already recorded for {fp[:12]}")
+        sys.exit(0)
+    lines = [
+        "[[trusted]]",
+        f'fingerprint = "{fp}"',
+        f'namespace = "{ns}"',
+        f'public_key = "{raw.hex()}"',
+        f'name = "{name}"',
+        'identity = "profile"',
+    ]
+    nl = chr(10)
+    with store.open("a", encoding="utf-8") as fh:
+        fh.write(nl.join(lines) + nl)
+    print(f"trusted {ns} ({fp[:12]}) in {store}")
+PY
 }
 
 wait_http() {

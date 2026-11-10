@@ -54,6 +54,11 @@ elif [[ "$PACKAGE" == "$FLARE_CACHE"/* ]]; then
 fi
 
 mapfile -t DEVICE_ARGS < <(gpu_device_args)
+if [[ "$RUN" == 1 ]]; then
+  # Record the local development publisher so a detached container never waits
+  # on the first-run trust prompt. No-op when ignition has not written a profile.
+  log "trust: $(seed_trust)"
+fi
 CMD=(podman run -d --name "$FLARE_CONTAINER_NAME" --replace
   "${DEVICE_ARGS[@]}"
   --security-opt label=disable --security-opt seccomp=unconfined
@@ -62,6 +67,7 @@ CMD=(podman run -d --name "$FLARE_CONTAINER_NAME" --replace
   -v "$FLARE_SRC:/work"
   -v "$RECIPE_DIR:/recipe:ro"
   -v "$FLARE_CACHE:/root/.cache/flare"
+  -v "$FLARE_CONFIG:/root/.config/flare"
   -w /work
   -e CUDA_HOME=/usr/local/cuda
   -e LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/nvidia/lib64

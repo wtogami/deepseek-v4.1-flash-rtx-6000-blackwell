@@ -93,6 +93,7 @@ CMD=(podman run --rm -i
   -v "$DS_DIR:$DS_DIR:ro"
   -v "$NVFP4_DIR:$NVFP4_DIR:ro"
   -v "$FLARE_CACHE:/root/.cache/flare"
+  -v "$FLARE_CONFIG:/root/.config/flare"
   -w /work
   -e CUDA_HOME=/usr/local/cuda
   -e LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/nvidia/lib64

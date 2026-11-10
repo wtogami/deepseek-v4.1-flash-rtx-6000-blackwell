@@ -44,6 +44,12 @@ Background and expected deviations: [`results/flare-tp3-parked.md`](../../result
 `build.sh`, `export.sh`, `serve.sh`, and `bench.sh` print their plan and exit
 unless `--run` is passed. `audit.sh` is read-only.
 
+Flare asks once, in an interactive terminal, to trust the publisher of a locally
+exported package. `serve.sh` avoids that prompt by writing the acceptance into
+`$FLARE_CONFIG/trust.toml` from the `development-publisher.json` that
+`ignition export` creates (fingerprint = SHA-256 of the raw key bytes), so the
+serving container can start detached.
+
 ## What gets downloaded
 
 - Recipe repo at `a5269231` (the 20261105 folder; the pinned commit differs
@@ -63,6 +69,7 @@ unless `--run` is passed. `audit.sh` is read-only.
 | `NVFP4_DIR` | `/nvme1/models/DeepSeek-V4.1-Flash-1017-NVFP4` | MXFP4 Engram 47-48 |
 | `CKPT_VIEW` | `~/flare-tp3/ckpt` | symlink view |
 | `FLARE_CACHE` | `~/.cache/flare` | exported package (~380 GiB) |
+| `FLARE_CONFIG` | `~/flare-tp3/config` | Flare config dir: dev signing key, publisher profile, trust store |
 | `CUDA_IMAGE` | `docker.io/nvidia/cuda:13.2.1-devel-ubuntu24.04` | build/export/serve image |
 | `GPUS` | `1,2,3` | host cards passed through CDI |
 | `CONTAINER_GPUS` | `0,1,2` | indices inside the container (renumbered) |

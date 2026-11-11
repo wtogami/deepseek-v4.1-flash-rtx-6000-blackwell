@@ -1,0 +1,4 @@
+0, NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition, 325.00 W, 180 MHz, 405 MHz, 1, 39
+1, NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition, 325.00 W, 2340 MHz, 13365 MHz, 4, 81
+2, NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 325.00 W, 2760 MHz, 13365 MHz, 4, 66
+3, NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 325.00 W, 2610 MHz, 13365 MHz, 4, 55

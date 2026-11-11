@@ -1,0 +1,5 @@
+decode-32k.json
+     ctx conc   tok/s  steps/s tok/step accept GPU busy engram wait
+       ?    1   173.3     66.7     2.60   0.32     100%        0.0%
+       ?    4   373.9     43.3     8.63   0.52     100%        0.0%
+       ?    8   508.8     33.7    15.08   0.63     100%        0.0%

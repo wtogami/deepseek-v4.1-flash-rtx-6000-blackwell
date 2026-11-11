@@ -70,6 +70,35 @@ systemd's `DefaultLimitMEMLOCK` (8 GiB), so run them from a shell created with
 Its knobs are `KK_CAP` (`131072`), `ONE_M_CAP` (`-1`), `ORIGINAL_DIRECTORY`,
 `CSF_DIRECTORY`, `POWER_LIMIT` (`325`) and `ALLOW_POWER_MISMATCH`.
 
+## Flare TP3 replication (measured, not adopted)
+
+`scripts/flare-tp3/` reproduces the community Flare TP3 recipe for this model on
+three cards. It is documented, measured, and **not** the running configuration:
+the engine stays four-GPU vLLM at `MAX_MODEL_LEN=-1`.
+
+```bash
+./scripts/flare-tp3/audit.sh          # read-only state check
+./scripts/flare-tp3/export.sh --run --stop-engine   # HOT=290 PREFILL=4096
+./scripts/flare-tp3/serve.sh --run    # http://127.0.0.1:15015
+./scripts/flare-tp3/bench.sh --run --full           # recipe cells
+./scripts/flare-tp3/bench-baseline.sh --run         # this project's cells
+./scripts/flare-tp3/serve.sh --stop && ./start.sh   # back to TP4 vLLM
+```
+
+Measured on GPUs 1,2,3 (one Max-Q + two Workstation, 325 W, stock memory clock,
+Gen4 x16 behind PHB, DDR4 host) against the recipe's 3 × Workstation at 350 W
+with a +6000 MHz memory offset on Gen5: decode 32K 173.3/373.9/508.8 tok/s at
+C1/C4/C8 (published 254/595/805) at a flat **0.70-0.71x per engine step**;
+prefill 8K/32K/128K 7,667/9,758/9,358. On this project's own cells the three-GPU
+Flare build is -12.0% prefill, -21.5% C1 and -23.5% C8 against four-GPU vLLM,
+while per card it is ahead (+17% prefill, +5% C1, +2% C8, +18% KV at
+4,194,304 versus 4,740,829 tokens). Correctness was clean: `verify_fix.py`
+reported 0 corruptions, tool calls 60/60, and long retrieval passed at 127,986
+and 899,988 tokens. Full tables: `results/flare-tp3-20261111-040643/REPORT.md`;
+the attempt-by-attempt log, including the two container/platform fixes this
+needed (rootless `pids.max`, mixed-SKU compile cache), is in
+`results/flare-tp3-parked.md`.
+
 ## Environment
 
 | Variable | Default | Meaning |

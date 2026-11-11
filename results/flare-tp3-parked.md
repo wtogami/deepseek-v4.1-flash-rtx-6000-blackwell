@@ -254,3 +254,22 @@ checkpoint at `MAX_MODEL_LEN=-1`.
   more than the published `HOT=300` build (2,991,488) and 0.43× of our four-GPU
   vLLM arm at 1M (9,718,137). The trust seeding worked: the detached container
   never prompted for the publisher.
+- Benchmarks completed; full tables and verdict in
+  `results/flare-tp3-20261111-040643/REPORT.md`. Headline: recipe-protocol
+  decode 173.3/373.9/508.8 tok/s at C1/C4/C8 (published 254/595/805) at a flat
+  0.70-0.71x per engine step; like-for-like against our four-GPU vLLM arm,
+  prefill -12.0%, C1 -21.5%, C8 -23.5%; per card Flare is +17% prefill, +5% C1,
+  +2% C8, +18% KV. Correctness clean: `verify_fix` 0 corruptions, tool calls
+  60/60, long retrieval passed at 127,986 and 899,988 tokens.
+- Decision rule (keep Flare only within ~10-15% of the four-GPU numbers) says
+  revert. `serve.sh --stop` removed the Flare container at 05:03, GPUs returned
+  to 2 MiB each, and `./start.sh` restored `ds41` on the original flat
+  checkpoint with `max_model_len=-1`: `GPU KV cache size: 9,699,173 tokens`,
+  9.25x concurrency at 1M, all 12 P2P pairs at ~28.1 GB/s, NCCL 8 channels via
+  P2P / 0 via SHM, TWOSHOT_MB=6, and a greedy probe answering exactly.
+- Left in place for reuse: package `~/.cache/flare/packages/models/ckpt/`
+  `gb202-tp3-202611110954` (380 GB), tuning cache `~/.cache/flare/kernels`
+  (1.1 GB), image `localhost/flare-tp3:13.2.1`, sources under `~/flare-tp3/`,
+  NVIDIA MXFP4 Engram shards under `/nvme1/models/`. Free space afterwards is
+  1.1 TB on `/`. Drop the package with
+  `flare models remove ckpt@gb202-tp3-202611110954` then `flare models gc`.

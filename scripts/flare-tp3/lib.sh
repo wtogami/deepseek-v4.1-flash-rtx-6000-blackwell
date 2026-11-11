@@ -18,6 +18,7 @@ FLARE_CACHE="${FLARE_CACHE:-$HOME/.cache/flare}"
 FLARE_CONFIG="${FLARE_CONFIG:-$FLARE_TP3_ROOT/config}"
 BENCH_DIR="${BENCH_DIR:-$FLARE_TP3_ROOT/llm-inference-bench}"
 CUDA_IMAGE="${CUDA_IMAGE:-docker.io/nvidia/cuda:13.2.1-devel-ubuntu24.04}"
+FLARE_IMAGE="${FLARE_IMAGE:-localhost/flare-tp3:13.2.1}"
 GPUS="${GPUS:-1,2,3}"
 CONTAINER_GPUS="${CONTAINER_GPUS:-0,1,2}"
 POWER_LIMIT="${POWER_LIMIT:-325}"
@@ -42,6 +43,16 @@ log() { printf '[%s] %s\n' "$(date '+%F %T')" "$*" >&2; }
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "$1 is required on PATH"
+}
+
+# The derived image carries the toolchain (CUDA + compilers + uv + Rust); fall
+# back to the plain CUDA devel image when it has not been built yet.
+work_image() {
+  if podman image exists "$FLARE_IMAGE" 2>/dev/null; then
+    printf '%s' "$FLARE_IMAGE"
+  else
+    printf '%s' "$CUDA_IMAGE"
+  fi
 }
 
 engine_health() {

@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Build the patched Flare fork inside a CUDA 13.2.1 container.
+# Build the patched Flare fork inside the CUDA container.
 #
 #   ./scripts/flare-tp3/build.sh            # print the plan (no container)
-#   ./scripts/flare-tp3/build.sh --run      # pull + build (30-90 min)
+#   ./scripts/flare-tp3/build.sh --run      # build (first run 30-90 min)
 #
-# The host has no passwordless sudo, so the build runs in the NVIDIA CUDA
-# devel image. The repo and the cargo/uv caches are bind-mounted, so a retry
-# resumes instead of starting over. CUDA 13.2.1 is chosen to match the fork's
-# torch==2.14.1+cu132 / cuda-python==13.3.1 environment (the recipe text says
-# 13.1, but its own lock file resolves cu132).
+# The host has no passwordless sudo, so everything runs in a container. Prefer
+# the image from image.sh (CUDA + compilers + uv + Rust already inside); with
+# the plain CUDA devel image the script installs them first. CUDA 13.2.1 is
+# used rather than the recipe's stated 13.1 because the fork's lock file
+# resolves torch==2.14.1+cu132 and cuda-python==13.3.1. The repo and the cargo
+# and uv caches are bind-mounted, so a retry resumes instead of restarting.
 set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
@@ -35,26 +36,27 @@ else
   die "source.patch neither applies nor is already applied; check the flare checkout"
 fi
 
-mkdir -p "$FLARE_TP3_ROOT/cache/cargo" "$FLARE_TP3_ROOT/cache/rustup" \
-         "$FLARE_TP3_ROOT/cache/uv"
+mkdir -p "$FLARE_TP3_ROOT/cache/cargo/registry" "$FLARE_TP3_ROOT/cache/uv"
 
+IMAGE="$(work_image)"
 log "flare:  $FLARE_SRC ($(git -C "$FLARE_SRC" rev-parse --short HEAD))"
 log "recipe: $RECIPE_DIR"
-log "image:  $CUDA_IMAGE"
+log "image:  $IMAGE"
 log "patch:  $PATCH_STATE"
 log "cache:  $FLARE_TP3_ROOT/cache"
 
 if [[ "$RUN" != 1 ]]; then
   cat <<EOF
 Plan (re-run with --run to execute):
-  podman run --rm -i --network host --security-opt label=disable \\
+  podman run --rm -i --security-opt label=disable \\
     -v $FLARE_SRC:/work -v $RECIPE_DIR:/recipe:ro \\
-    -v $FLARE_TP3_ROOT/cache/cargo:/root/.cargo \\
-    -v $FLARE_TP3_ROOT/cache/rustup:/root/.rustup \\
+    -v $FLARE_TP3_ROOT/cache/cargo/registry:/root/.cargo/registry \\
     -v $FLARE_TP3_ROOT/cache/uv:/root/.cache/uv \\
-    -w /work $CUDA_IMAGE bash -s
-  inside: apt build deps -> rustup 1.97.0 -> uv 0.11.0 -> git apply source.patch
+    -w /work $IMAGE bash -s
+  inside: (plain CUDA image only) apt build deps, rustup 1.97.0, uv 0.11.0
+          -> git apply source.patch
           -> uv sync --locked --extra prepare --extra test
+          -> python -m ignition.patches
           -> apply tp3-patches to the installed FlashInfer
           -> cargo build --release -> flare --version
 EOF
@@ -64,37 +66,32 @@ fi
 LOG="$STATE_DIR/flare-build-$(date +%Y%m%d-%H%M%S).log"
 log "building; log: $LOG"
 
-podman run --rm -i --network host --security-opt label=disable \
+podman run --rm -i --security-opt label=disable \
   -v "$FLARE_SRC:/work" \
   -v "$RECIPE_DIR:/recipe:ro" \
-  -v "$FLARE_TP3_ROOT/cache/cargo:/root/.cargo" \
-  -v "$FLARE_TP3_ROOT/cache/rustup:/root/.rustup" \
+  -v "$FLARE_TP3_ROOT/cache/cargo/registry:/root/.cargo/registry" \
   -v "$FLARE_TP3_ROOT/cache/uv:/root/.cache/uv" \
   -w /work \
-  -e CUDA_HOME=/usr/local/cuda \
-  -e PATH=/usr/local/cuda/bin:/root/.cargo/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-  "$CUDA_IMAGE" bash -s <<'INNER' 2>&1 | tee "$LOG"
+  "$IMAGE" bash -s <<'INNER' 2>&1 | tee "$LOG"
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get install -y --no-install-recommends \
-  git curl ca-certificates build-essential cmake ninja-build pkg-config \
-  protobuf-compiler libssl-dev python3-dev liburing-dev clang libclang-dev
 
-# Rust 1.97 (recipe-tested); the crate only requires 1.88.
-if ! command -v rustup >/dev/null 2>&1; then
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-    | sh -s -- -y --profile minimal --default-toolchain 1.97.0
+# The derived image already carries these; the plain CUDA image does not.
+if ! command -v cmake >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1; then
+  apt-get update
+  apt-get install -y --no-install-recommends \
+    git curl ca-certificates build-essential cmake ninja-build pkg-config \
+    protobuf-compiler libssl-dev python3-dev liburing-dev clang libclang-dev
 fi
-export PATH=/root/.cargo/bin:$PATH
-rustup toolchain install 1.97.0 --profile minimal
-rustup default 1.97.0
-rustc --version
-
-# uv 0.11 (the fork's lock file was produced with it).
+if ! command -v rustc >/dev/null 2>&1; then
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --no-modify-path --profile minimal --default-toolchain 1.97.0
+  export PATH=/root/.cargo/bin:$PATH
+fi
 if ! command -v uv >/dev/null 2>&1; then
   curl -LsSf https://astral.sh/uv/0.11.0/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
 fi
+rustc --version
 uv --version
 
 cd /work

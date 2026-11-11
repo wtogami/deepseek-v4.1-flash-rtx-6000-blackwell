@@ -86,6 +86,11 @@ fi
 echo
 echo "=== toolchain / image ==="
 if command -v podman >/dev/null 2>&1; then ok "podman $(podman --version | awk '{print $3}')"; else bad "podman missing"; fi
+if podman image exists "$FLARE_IMAGE" 2>/dev/null; then
+  ok "working image present: $FLARE_IMAGE ($(work_image))"
+else
+  warn "working image missing: $FLARE_IMAGE (run image.sh --run; falls back to $CUDA_IMAGE)"
+fi
 repo="${CUDA_IMAGE%:*}"; tag="${CUDA_IMAGE##*:}"; repo="${repo#docker.io/}"
 if curl -fsSL -m 20 "https://hub.docker.com/v2/repositories/${repo}/tags/${tag}" \
      >/dev/null 2>&1; then

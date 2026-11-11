@@ -74,10 +74,12 @@ done
 [[ -x "$FLARE_SRC/.venv/bin/ignition" ]] || need "ignition venv missing (run build.sh --run)"
 
 mkdir -p "$FLARE_CACHE"
+IMAGE="$(work_image)"
 free="$(free_gib "$FLARE_CACHE")"
 (( free >= MIN_FREE_GIB )) || need "need >= ${MIN_FREE_GIB} GiB free for the package under $FLARE_CACHE (have ${free} GiB)"
 
 log "checkpoint: $CKPT_VIEW"
+log "image: $IMAGE"
 log "package cache: $FLARE_CACHE (${free} GiB free)"
 log "GPUs: $GPUS (container $CONTAINER_GPUS)  HOT=$HOT PREFILL=$PREFILL"
 
@@ -99,7 +101,7 @@ CMD=(podman run --rm -i
   -e LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/nvidia/lib64
   -e PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
   -e CKPT=/ckpt -e GPUS="$CONTAINER_GPUS" -e HOT="$HOT" -e PREFILL="$PREFILL"
-  "$CUDA_IMAGE" bash -lc 'bash /recipe/export.sh')
+  "$IMAGE" bash -lc 'bash /recipe/export.sh')
 
 if [[ "$RUN" != 1 ]]; then
   log "dry-run: ${CMD[*]}"

@@ -54,6 +54,7 @@ elif [[ "$PACKAGE" == "$FLARE_CACHE"/* ]]; then
 fi
 
 mapfile -t DEVICE_ARGS < <(gpu_device_args)
+IMAGE="$(work_image)"
 if [[ "$RUN" == 1 ]]; then
   # Record the local development publisher so a detached container never waits
   # on the first-run trust prompt. No-op when ignition has not written a profile.
@@ -73,7 +74,7 @@ CMD=(podman run -d --name "$FLARE_CONTAINER_NAME" --replace
   -e LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/nvidia/lib64
   -e PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
   -e PACKAGE="$PACKAGE" -e GPUS="$CONTAINER_GPUS" -e PORT="$PORT" -e HOST=127.0.0.1
-  "$CUDA_IMAGE" bash -lc 'bash /recipe/serve.sh')
+  "$IMAGE" bash -lc 'bash /recipe/serve.sh')
 
 if [[ "$RUN" != 1 ]]; then
   log "dry-run: ${CMD[*]}"

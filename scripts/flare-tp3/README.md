@@ -169,6 +169,17 @@ clocks, which they do.
 
 `HOT` is a plain environment variable: `HOT=290 ./scripts/flare-tp3/export.sh --run`.
 
+**Container task limit.** Rootless podman gives a container `pids.max=2048`
+(`podman run … cat /sys/fs/cgroup/pids.max`). A three-rank export with a
+64-thread BLAS pool per rank, inductor compile workers and CUDA driver threads
+exceeds it, and the symptoms look unrelated: `OpenBLAS blas_thread_init:
+pthread_create failed … Resource temporarily unavailable`, a rank that stalls
+until torch's 2 h Gloo recv timeout, and at the compile stage
+`RuntimeError: Unexpected error from cudaGetDeviceCount() … Error 304: OS call
+failed or operation not supported on this OS`. `export.sh` and `serve.sh` pass
+`--pids-limit "$PIDS_LIMIT"` (default 16384). If you see error 304 in a
+multi-rank container, check this before chasing PCIe topology or VRAM.
+
 **Cleanup between exports.** Packages share files, so delete old versions with
 `flare models remove <model>@<version>` and `flare models gc` rather than
 removing directories by hand.

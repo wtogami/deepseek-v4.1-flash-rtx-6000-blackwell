@@ -24,6 +24,12 @@ CONTAINER_GPUS="${CONTAINER_GPUS:-0,1,2}"
 POWER_LIMIT="${POWER_LIMIT:-325}"
 PORT="${PORT:-15015}"
 FLARE_CONTAINER_NAME="${FLARE_CONTAINER_NAME:-flare-tp3}"
+# Rootless podman gives a container pids.max=2048. Three ranks, each with a
+# 64-thread BLAS pool plus inductor compile workers and CUDA driver threads,
+# runs past that: clone() fails with EAGAIN (OpenBLAS "pthread_create failed ...
+# Resource temporarily unavailable") and CUDA init in a worker returns
+# "Error 304: OS call failed". Raise it for the export and serving containers.
+PIDS_LIMIT="${PIDS_LIMIT:-16384}"
 STATE_DIR="${STATE_DIR:-$PROJECT_DIR/state/logs}"
 mkdir -p "$STATE_DIR" "$FLARE_CONFIG"
 

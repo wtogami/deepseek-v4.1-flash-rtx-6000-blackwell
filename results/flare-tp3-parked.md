@@ -193,10 +193,28 @@ checkpoint at `MAX_MODEL_LEN=-1`.
   `EXPORT_TIMEOUT=3600` wall-clock cap (torch's Gloo timeout is 2 h, which is
   far too long to burn on a deadlock). `export.sh` also removes a leftover
   container and warns about surviving GPU compute processes after a kill.
-- If attempt 3 stalls at the same place, the ordered fallbacks are: lower the
-  joint-tuning compile headroom (`FLARE_DS41_JOINT_HEADROOM_MIB`), then export
-  the documented `PREFILL=2048` variant, which halves the all-reduce staging
-  buffer per rank — the release config is Gen5/x16-tuned and our box is
-  Gen4/PHB, and the recipe's own later revision reduced that buffer for VRAM
-  reasons. A 2048 variant is still a measurement of this recipe on this
-  hardware, labelled as such.
+- Root cause found for both stalls: rootless podman gives each container
+  `pids.max=2048`. Three ranks with a 64-thread BLAS pool each, plus inductor
+  compile workers and CUDA driver threads, exceed it, so `clone()` returns
+  EAGAIN (`OpenBLAS blas_thread_init: pthread_create failed for thread 28 of 64:
+  Resource temporarily unavailable`) and CUDA initialization inside a compile
+  worker fails with `Error 304: OS call failed or operation not supported on
+  this OS`. All three export logs show the OpenBLAS thread failures; only the
+  third got far enough (221.7 s tuning, all cached) to reach the compile stage
+  where the CUDA error appeared. The 2 h hang in attempt 2 was a peer rank
+  unable to make threads, not a PCIe-topology deadlock.
+- Fix: `--pids-limit 16384` on the export and serving containers (`PIDS_LIMIT`
+  in lib.sh; verified `pids.max` becomes 16384 inside the container). The host
+  session scope allows 1,360,814 tasks and `vm.max_map_count` is already
+  1,048,576, so nothing else needed raising and no root action is required.
+  Attempt 4 is `HOT=290` again with the raised limit.
+
+  Still open: `HOT=300` ran out of VRAM during cold tuning (attempt 1), so if
+  the release configuration still cannot export after the thread fix, the
+  ordered fallbacks are `FLARE_DS41_JOINT_HEADROOM_MIB` (lowers the
+  joint-tuning compile headroom for that phase only), then the documented
+  `PREFILL=2048` variant, which halves the per-rank all-reduce staging buffer.
+  A 2048 variant is still a measurement of this recipe on this hardware,
+  labelled as such; benchmarking the 290 package is the last resort and would
+  be reported as a different hot-expert count (KV drops roughly 93K tokens per
+  hot expert per parked layer).

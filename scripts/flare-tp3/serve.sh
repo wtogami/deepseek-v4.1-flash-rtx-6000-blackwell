@@ -65,6 +65,7 @@ CMD=(podman run -d --name "$FLARE_CONTAINER_NAME" --replace
   --security-opt label=disable --security-opt seccomp=unconfined
   --ipc=host --network host --cap-add IPC_LOCK
   --ulimit memlock=-1:-1
+  --pids-limit "$PIDS_LIMIT"
   -v "$FLARE_SRC:/work"
   -v "$RECIPE_DIR:/recipe:ro"
   -v "$FLARE_CACHE:/root/.cache/flare"

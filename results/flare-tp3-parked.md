@@ -122,28 +122,43 @@ GPU; otherwise document and revert.
 
 ## Staged implementation (2026-11-10)
 
-Everything that does not need the engine stopped is in place:
+Everything that does not need the engine stopped is done:
 
-- `scripts/flare-tp3/` — download, build, checkpoint-view, export, serve,
-  bench, audit wrappers. `audit.sh` is read-only.
+- `scripts/flare-tp3/` — `download`, `image`, `build`, `checkpoint-view`,
+  `export`, `serve`, `bench`, plus a read-only `audit`. Everything except
+  `--run` paths is side-effect free.
 - Recipe repo at `~/flare-tp3/recipe` (20261105 folder; identical to the
   pinned commit except README).
-- NVIDIA Flare at `~/flare-tp3/flare` @ `78b18b1c`; `source.patch` applies
-  cleanly; four FlashInfer TP3 patches staged.
-- `llm-inference-bench` v0.9.1 cloned with its venv.
-- NVIDIA MXFP4 Engram shards 47-48 downloading to `/nvme1/models/`.
-- CUDA 13.2.1 devel image pull staged.
+- NVIDIA Flare at `~/flare-tp3/flare` @ `78b18b1c`, `source.patch` applied,
+  `flare 0.1.0` built in release mode, `.venv` synced (torch 2.14.1+cu132,
+  cuda-python 13.3.1, FlashInfer `ddbe93fc`), `ignition.patches` applied to
+  the Inductor/Triton files, and the four FlashInfer TP3 patches applied.
+- Working image `localhost/flare-tp3:13.2.1` (CUDA 13.2.1 devel + compilers +
+  cmake/ninja/protoc + Rust 1.97 + uv 0.11). Verified: GPU visible through the
+  CDI spec, host GPU 1 appears as container index 0.
+- `llm-inference-bench` v0.9.1 cloned with its venv; flags checked against
+  the tag's parser.
+- NVIDIA MXFP4 Engram shards 47-48 in `/nvme1/models/`, sizes verified
+  (52,382,361,720 and 52,383,791,632 bytes).
+- Checkpoint view built and validated: 96,085 tensors in 48 shards, missing 0;
+  layer-1 Engram table U8 [384006168, 128]. Mount resolution checked inside
+  the container.
+- `audit.sh`: no failures, no warnings once the binary and view exist.
 
-Not done (waiting for the user): build, checkpoint view, export, serve,
-benchmark. The engine is still running the original checkpoint at 1M.
+Remaining, in order: `export.sh --run --stop-engine` (stops `ds41`, ~1.5-2.5 h),
+`serve.sh --run`, `bench.sh --run`. The engine still runs the original
+checkpoint at `MAX_MODEL_LEN=-1`.
 
 ## Resume checklist
 
-1. Confirm disk: >= 600 GB free on the export filesystem.
-2. Stop `ds41` (GPUs idle, frees ~200 GB RAM Engram).
-3. Set 325 W on GPUs 1,2,3; run from a shell with `ulimit -l unlimited`.
-4. Build in CUDA 13.1 devel container; verify `flare --version` and
-   `ignition export --help`.
-5. Download NVFP4 shards 47-48; build and validate the checkpoint view.
-6. Export, serve, bench; write `results/flare-tp3-<date>/REPORT.md`.
-7. Restore `ds41` (original checkpoint, `MAX_MODEL_LEN=-1`) or keep Flare.
+1. Confirm disk: >= 600 GB free where `~/.cache/flare` lives (1415 GiB now).
+2. From a shell with `ulimit -l unlimited`, run
+   `./scripts/flare-tp3/export.sh --run --stop-engine` (~1.5-2.5 h; it stops
+   `ds41`, sets nothing itself, checks power/memlock/idleness first).
+3. `./scripts/flare-tp3/serve.sh --run` (~60 s to healthy on :15015); read the
+   printed KV token count (expect ~2.99M at HOT=300).
+4. `./scripts/flare-tp3/bench.sh --run --full`; write
+   `results/flare-tp3-<date>/REPORT.md` comparing against the four-GPU vLLM
+   baseline (decode 220 / 745 tok/s, prefill ~10.7k) at the same cells.
+5. Restore `ds41` (`./scripts/flare-tp3/serve.sh --stop && ./start.sh`, original
+   checkpoint, `MAX_MODEL_LEN=-1`) or keep Flare if it wins.

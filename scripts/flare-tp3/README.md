@@ -1,10 +1,10 @@
 # Flare TP3 experiment (staged)
 
 Replication of the community Flare TP3 recipe for DeepSeek-V4.1-Flash-1017
-on three RTX PRO 6000 cards. Everything up to and including the Flare build is
-in place; export, serve and benchmark are not run yet. The engine (`ds41`,
-original checkpoint @ 1M) keeps serving on :8000 and is only stopped by
-`export.sh --stop-engine`.
+on three RTX PRO 6000 cards. Downloads, the working image and the patched
+Flare build are done; export, serve and benchmark are not run yet. The engine
+(`ds41`, original checkpoint @ 1M) keeps serving on :8000 and is only stopped
+by `export.sh --stop-engine`.
 
 Background and expected deviations: [`results/flare-tp3-parked.md`](../../results/flare-tp3-parked.md).
 

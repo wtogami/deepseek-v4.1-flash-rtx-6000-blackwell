@@ -147,6 +147,32 @@ roughly half its per-step speed, mostly from memory clock and GPU-to-GPU links.
 Expect the replica to land well below 254/805 tok/s; the point is to measure
 how much survives.
 
+## Troubleshooting
+
+**Cold-tuning OOM.** The first export on this box failed at 2078/2452 kernels:
+
+```
+torch.OutOfMemoryError: verification4x6-tokens7.target.layer20.attention.index0
+failed to prepare with configuration DsaIndexerConfig(...): CUDA out of memory.
+Tried to allocate 256.00 MiB. GPU 0 has a total capacity of 95.06 GiB of which
+249.56 MiB is free. ... 70.00 GiB is allocated by PyTorch
+[  FAILED  ] Prepare and tune kernels.  1399.0s
+```
+
+That is the recipe's known cold-cache condition: kernel tuning needs more free
+VRAM than serving, and each rank sits at ~64 GiB of resident tensors plus the
+tuning scratch. Nothing is lost: the tuning cache lives in
+`~/.cache/flare/kernels`, so the remedy is to export once with a lower `HOT`
+(290 here) and then export the target `HOT=300`, which reuses the cache and
+only tunes what is new. Both exports must run on the same cards and the same
+clocks, which they do.
+
+`HOT` is a plain environment variable: `HOT=290 ./scripts/flare-tp3/export.sh --run`.
+
+**Cleanup between exports.** Packages share files, so delete old versions with
+`flare models remove <model>@<version>` and `flare models gc` rather than
+removing directories by hand.
+
 ## Audit
 
 ```bash

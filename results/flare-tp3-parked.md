@@ -162,3 +162,21 @@ checkpoint at `MAX_MODEL_LEN=-1`.
    baseline (decode 220 / 745 tok/s, prefill ~10.7k) at the same cells.
 5. Restore `ds41` (`./scripts/flare-tp3/serve.sh --stop && ./start.sh`, original
    checkpoint, `MAX_MODEL_LEN=-1`) or keep Flare if it wins.
+
+## Execution log (2026-11-10/11)
+
+- `ds41` stopped by `export.sh --stop-engine` at 23:52; GPUs idle, 469 GiB host
+  RAM available.
+- Export attempt 1 (`HOT=300 PREFILL=4096`, GPUs 1,2,3 at 325 W): weights
+  routed and loaded in 125.7 s (104.94 GB selected per rank 0, 175.11 GB
+  physical reads), embedding tables prepared (97.3 GiB), graph catalog built,
+  then kernel tuning ran 1399 s and reached 2078/2452 kernels before CUDA OOM on
+  all three ranks while allocating 256 MiB with 249 MiB free (~64 GiB resident
+  tensors per rank plus tuning scratch). `[  FAILED  ] Prepare and tune kernels`.
+  This is the recipe's documented cold-cache condition; the remedy it gives is a
+  lower-`HOT` pass first, since `~/.cache/flare/kernels` is shared. 952 MB of
+  tuning cache was kept; no package was written; GPUs and RAM were clean
+  afterwards.
+- Export attempt 2 (`HOT=290`) started at 00:21 to fill the tuning cache; then
+  `HOT=300` re-tunes only what is new and produces the release-configuration
+  package to benchmark.

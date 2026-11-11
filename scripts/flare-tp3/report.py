@@ -118,6 +118,8 @@ def main():
     ap.add_argument("--kv", type=int, help="Flare KV capacity in tokens")
     ap.add_argument("--recipe-published", action="store_true",
                     help="compare against the recipe's published numbers too")
+    ap.add_argument("--note", action="append", default=[], dest="notes",
+                    help="bullet appended under Conditions (repeatable)")
     ap.add_argument("--out", type=Path, help="write Markdown here instead of stdout")
     args = ap.parse_args()
 
@@ -188,17 +190,20 @@ def main():
             tok_s = (cell or {}).get("tok_s")
             add(f"| decode 32K C{conc} tok/s | {fmt(tok_s)} | ~{pub_decode[conc]} |")
         add("")
-        add("| Cell | steps/s | tokens/step | draft acceptance |")
-        add("|---|---:|---:|---:|")
-        pub_steps = {1: "93.8", 4: "62.0", 8: "48.1"}
+        add("| Cell | steps/s | tokens/step | draft acceptance | recipe steps/s |")
+        add("|---|---:|---:|---:|---:|")
+        pub_steps = {1: 93.8, 4: 62.0, 8: 48.1}
         for conc, cell in recipe_decode.items():
             if not cell:
-                add(f"| decode 32K C{conc} | — | — | — |")
+                add(f"| decode 32K C{conc} | — | — | — | {pub_steps[conc]} |")
                 continue
             steps = cell.get("flare_steps_s") or cell.get("steps_s")
             tps = cell.get("flare_tok_step")
             acc = cell.get("flare_accept") or cell.get("accept")
-            add(f"| decode 32K C{conc} | {fmt(steps)} | {fmt(tps, '{:.2f}')} | {fmt(acc, '{:.2f}')} |")
+            ratio = (f"{steps / pub_steps[conc]:.2f}×"
+                     if isinstance(steps, (int, float)) else "—")
+            add(f"| decode 32K C{conc} | {fmt(steps)} | {fmt(tps, '{:.2f}')} | {fmt(acc, '{:.2f}')} "
+                f"| {pub_steps[conc]} ({ratio}) |")
         add("")
 
     if v_c1s or v_c8s:
@@ -223,11 +228,41 @@ def main():
         vf = read_text(args.recipe / "verify-fix.log")
         m = re.search(r"TRUE corruptions\s+(\d+)", vf)
         if m:
-            add("## Correctness")
+            add("## Correctness and quality")
             add("")
             add(f"- `tools/verify_fix.py 10`: TRUE corruptions {m.group(1)} "
                 f"(the recipe requires 0)")
+            cp = (load(Path(args.recipe) / "coding-peak.json") or {}).get("coding_peak", {})
+            summary = cp.get("summary", {})
+            med = summary.get("median_generation_tok_s")
+            if med:
+                add(f"- Coding peak (5 runs, median): {med:,.1f} tok/s "
+                    f"(range {summary.get('min_generation_tok_s', 0):,.1f}-"
+                    f"{summary.get('max_generation_tok_s', 0):,.1f}); "
+                    f"the recipe publishes 379-398 tok/s")
+            tools = read_text(args.recipe / "tool-calls.log").strip()
+            if tools:
+                add(f"- `tools/tool_calls.py 60 4`: {tools}")
+            lr = read_text(args.recipe / "long-retrieval.log")
+            for target in ("128000", "900000"):
+                hit = re.search(rf"DONE {target} (\{{.*\}})", lr)
+                if hit:
+                    try:
+                        doc = json.loads(hit.group(1))
+                        ok = "passed" if doc.get("passed") else "FAILED"
+                        pt = (doc.get("usage") or {}).get("prompt_tokens")
+                        add(f"- Long retrieval at {int(target):,} tokens: {ok} "
+                            f"(prompt {pt:,})")
+                    except ValueError:
+                        pass
             add("")
+
+    if args.notes:
+        add("## Conditions")
+        add("")
+        for note in args.notes:
+            add(f"- {note}")
+        add("")
 
     for label, directory in (("before", "gpu-before.txt"), ("after", "gpu-after.txt")):
         if args.ours and (Path(args.ours) / directory).is_file():

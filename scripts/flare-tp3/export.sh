@@ -110,7 +110,28 @@ fi
 
 LOG="$STATE_DIR/flare-export-$(date +%Y%m%d-%H%M%S).log"
 log "exporting; log: $LOG"
-"${CMD[@]}" 2>&1 | tee "$LOG"
+rc=0
+if [[ -n "${EXPORT_TIMEOUT:-}" ]]; then
+  # Tuning that deadlocks waits on torch's 2 h Gloo timeout; cap the wall clock
+  # instead so a retry can be scheduled. EXPORT_TIMEOUT is in seconds.
+  log "wall-clock cap: ${EXPORT_TIMEOUT}s"
+  timeout -k 120 "$EXPORT_TIMEOUT" "${CMD[@]}" 2>&1 | tee "$LOG" || rc=$?
+else
+  "${CMD[@]}" 2>&1 | tee "$LOG" || rc=$?
+fi
+
+# A killed or timed-out run can leave the container holding ~95 GiB per card.
+leftover="$(podman ps --quiet --filter "ancestor=$IMAGE" 2>/dev/null || true)"
+if [[ -n "$leftover" ]]; then
+  log "removing leftover export container: $(tr ' ' ',' <<<"$leftover")"
+  podman rm -f $leftover >/dev/null 2>&1 || true
+fi
+busy="$(gpu_compute_apps)"
+if [[ -n "$busy" ]]; then
+  log "WARN: GPU compute processes still present after the run:"
+  echo "$busy" >&2
+fi
+(( rc == 0 )) || die "export failed with rc=$rc (see $LOG)"
 
 pkg="$(find "$FLARE_CACHE/packages/models" -maxdepth 3 -type d -name 'gb202-tp3-*' 2>/dev/null | sort | tail -1 || true)"
 [[ -n "$pkg" ]] || die "export finished but no gb202-tp3-* package was found under $FLARE_CACHE/packages/models"

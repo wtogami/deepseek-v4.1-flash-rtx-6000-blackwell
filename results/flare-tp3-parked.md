@@ -180,3 +180,23 @@ checkpoint at `MAX_MODEL_LEN=-1`.
 - Export attempt 2 (`HOT=290`) started at 00:21 to fill the tuning cache; then
   `HOT=300` re-tunes only what is new and produces the release-configuration
   package to benchmark.
+- Export attempt 2 outcome: tuning itself succeeded — 2452/2452 kernels ready,
+  1012 measurements taken from the shared cache, 63 restored, 0 rejected, in
+  13:58 of session time. Then `b12x failed comm.pcie` and the rank group hung:
+  rank 0 sat on `waiting for ranks comm.pcie` and finally died in
+  `dist.all_gather_object` with
+  `gloo/transport/tcp/unbound_buffer.cc:78 Timed out waiting 7200000ms for recv`,
+  after `Prepare and tune kernels. 8181.9s`. No rank 1/2 output at all in that
+  log, so a peer stalled rather than crashed with a message. No package was
+  written; GPUs were empty afterwards; the 1.1 GB tuning cache was kept.
+- Export attempt 3: same `HOT=290`, now with a fully warm cache and a
+  `EXPORT_TIMEOUT=3600` wall-clock cap (torch's Gloo timeout is 2 h, which is
+  far too long to burn on a deadlock). `export.sh` also removes a leftover
+  container and warns about surviving GPU compute processes after a kill.
+- If attempt 3 stalls at the same place, the ordered fallbacks are: lower the
+  joint-tuning compile headroom (`FLARE_DS41_JOINT_HEADROOM_MIB`), then export
+  the documented `PREFILL=2048` variant, which halves the all-reduce staging
+  buffer per rank — the release config is Gen5/x16-tuned and our box is
+  Gen4/PHB, and the recipe's own later revision reduced that buffer for VRAM
+  reasons. A 2048 variant is still a measurement of this recipe on this
+  hardware, labelled as such.

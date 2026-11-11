@@ -208,6 +208,21 @@ checkpoint at `MAX_MODEL_LEN=-1`.
   session scope allows 1,360,814 tasks and `vm.max_map_count` is already
   1,048,576, so nothing else needed raising and no root action is required.
   Attempt 4 is `HOT=290` again with the raised limit.
+- Export attempt 4 (raised pids limit): the thread failures were gone. Tuning
+  took 216.8 s (everything from cache, `0 measured, 1268 cached`), compile
+  forwards finished 35/35 in 601.5 s, and then `Load compiled forwards` failed
+  on a heterogeneous-group assumption in torch:
+  `Compile package was created with different GPU: cached=...Workstation
+  Edition, current=...Max-Q Workstation Edition` in
+  `SystemInfo.check_compatibility`. Ignition compiles the catalog once per host
+  and every rank binds the same artifacts, so a mixed Max-Q/Workstation TP3
+  group cannot load them — and this box cannot form a homogeneous TP3 group
+  (two Max-Q, two Workstation). `patches/torch-heterogeneous-tp-gpu-name.patch`
+  compares GPU names after dropping the `Max-Q ` SKU tag (same GB202 silicon
+  and ISA; the power ceiling is not in the artifact); `build.sh` re-applies it
+  after every `uv sync`, and `verify_fix.py` guards correctness before timing.
+- Export attempt 5 (`HOT=290`, patched torch) is running with both the tuning
+  cache and the compiled artifacts already in place.
 
   Still open: `HOT=300` ran out of VRAM during cold tuning (attempt 1), so if
   the release configuration still cannot export after the thread fix, the

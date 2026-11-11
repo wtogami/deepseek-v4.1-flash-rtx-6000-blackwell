@@ -184,6 +184,32 @@ multi-rank container, check this before chasing PCIe topology or VRAM.
 `flare models remove <model>@<version>` and `flare models gc` rather than
 removing directories by hand.
 
+## Local patches (deviation from the recipe)
+
+`patches/torch-heterogeneous-tp-gpu-name.patch` relaxes one check in the
+installed torch (`torch/_dynamo/package.py`, `SystemInfo.check_compatibility`).
+Ignition compiles the forward catalog once per host and shares it across the
+tensor-parallel ranks, and torch refuses to load an artifact whose recorded GPU
+name differs from the current device:
+
+```
+RuntimeError: Compile package was created with different GPU:
+cached=NVIDIA RTX PRO 6000 Blackwell Workstation Edition,
+current=NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition
+```
+
+The recipe's box has three identical cards, so the check never fires there. Our
+TP3 group cannot: the box has two Max-Q and two Workstation editions, so every
+three-card group is mixed. All four are the same GB202 silicon and instruction
+set and differ only in the power ceiling, which is not part of the compiled
+artifact. The patch compares the names after dropping the `Max-Q ` SKU tag, so
+it still rejects a genuinely different GPU. `build.sh` re-applies it after every
+`uv sync`, next to the recipe's FlashInfer patches.
+
+Serving correctness does not depend on this judgement: `tools/verify_fix.py`
+compares sampled decode against teacher-forced prefill and must report
+`TRUE corruptions 0`, and it runs before any timing.
+
 ## Audit
 
 ```bash

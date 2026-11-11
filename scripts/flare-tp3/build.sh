@@ -50,6 +50,7 @@ if [[ "$RUN" != 1 ]]; then
 Plan (re-run with --run to execute):
   podman run --rm -i --security-opt label=disable \\
     -v $FLARE_SRC:/work -v $RECIPE_DIR:/recipe:ro \\
+    -v $SCRIPT_DIR/patches:/local-patches:ro \\
     -v $FLARE_TP3_ROOT/cache/cargo/registry:/root/.cargo/registry \\
     -v $FLARE_TP3_ROOT/cache/uv:/root/.cache/uv \\
     -w /work $IMAGE bash -s
@@ -57,7 +58,8 @@ Plan (re-run with --run to execute):
           -> git apply source.patch
           -> uv sync --locked --extra prepare --extra test
           -> python -m ignition.patches
-          -> apply tp3-patches to the installed FlashInfer
+          -> apply tp3-patches and the local patches/ to the installed
+             FlashInfer and torch
           -> cargo build --release -> flare --version
 EOF
   exit 0
@@ -69,6 +71,7 @@ log "building; log: $LOG"
 podman run --rm -i --security-opt label=disable \
   -v "$FLARE_SRC:/work" \
   -v "$RECIPE_DIR:/recipe:ro" \
+  -v "$SCRIPT_DIR/patches:/local-patches:ro" \
   -v "$FLARE_TP3_ROOT/cache/cargo/registry:/root/.cargo/registry" \
   -v "$FLARE_TP3_ROOT/cache/uv:/root/.cache/uv" \
   -w /work \
@@ -111,7 +114,8 @@ uv run --no-sync python -m ignition.patches
 
 SP=$(.venv/bin/python -c 'import flashinfer, pathlib; print(pathlib.Path(flashinfer.__file__).parents[1])')
 echo "FlashInfer site-packages: $SP"
-for p in /recipe/tp3-patches/*.patch; do
+for p in /recipe/tp3-patches/*.patch /local-patches/*.patch; do
+  [ -f "$p" ] || continue
   if patch -p1 -d "$SP" --dry-run <"$p" >/dev/null 2>&1; then
     patch -p1 -d "$SP" <"$p"
     echo "applied $(basename "$p")"

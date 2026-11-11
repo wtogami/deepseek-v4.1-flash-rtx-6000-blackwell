@@ -1,0 +1,18 @@
+--- a/torch/_dynamo/package.py
++++ b/torch/_dynamo/package.py
+@@ -461,7 +461,14 @@
+                 )
+ 
+             # Check GPU name if CUDA/XPU was used
+-            if other.gpu_name is not None and self.gpu_name != other.gpu_name:
++            # Local patch (flare-tp3): a mixed RTX PRO 6000 host runs one
++            # tensor-parallel group over Max-Q and Workstation cards that share
++            # an instruction set and one compile cache, so compare the names
++            # after dropping the power-limited SKU tag.
++            def _sku(name):
++                return name.replace("Max-Q ", "") if name is not None else name
++
++            if other.gpu_name is not None and _sku(self.gpu_name) != _sku(other.gpu_name):
+                 raise RuntimeError(
+                     f"Compile package was created with different GPU: "
+                     f"cached={self.gpu_name}, current={other.gpu_name}"

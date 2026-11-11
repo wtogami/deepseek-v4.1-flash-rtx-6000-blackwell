@@ -233,3 +233,24 @@ checkpoint at `MAX_MODEL_LEN=-1`.
   labelled as such; benchmarking the 290 package is the last resort and would
   be reported as a different hot-expert count (KV drops roughly 93K tokens per
   hot expert per parked layer).
+
+- Export attempt 5 (`HOT=290`, patched torch) **succeeded**: tuning 216.8 s from
+  cache, 35/35 forwards compiled, 129/129 graphs captured in 39.0 s, weight
+  payloads 258.6 s, assembly 97.7 s, publication verified per rank (rank 0
+  100,936,946,905 bytes, rank 1 100,936,987,753, rank 2 100,529,522,921, shared
+  104,451,107,600), commit `gb202-tp3-202611110954` at 1152.3 s total for the
+  native package. On disk: 380 GB; the cache is 388 GB.
+- VRAM at export, per rank: 94,437 MiB used / 2,904 MiB free; retained storage
+  69,469 MiB (weights 65,561 MiB, of which 37,440 MiB `w1_fp4` + 18,720 MiB
+  `w2_fp4` hot experts), package fixed mappings 99,708 MiB. Hot experts cost
+  about 13.8 MiB per rank per (expert, parked layer), so `HOT=300` would add
+  roughly 1.9 GiB of resident weights on top of the 2.9 GiB left free, which is
+  the same budget that made attempt 1 fail when tuning wanted a 256 MiB scratch
+  block with 249 MiB free.
+- Serving startup was 110 s (24,303 kernels prepared in 4.9 s, embedding tables
+  "disk weights, RAM scales" 27.6 s, `Start server. http://127.0.0.1:15015 ·
+  1048576 tokens/request`). **KV: 4,194,304 tokens** at `HOT=290` — the ~93K
+  tokens per hot expert per parked layer the recipe documents, i.e. about 1.2M
+  more than the published `HOT=300` build (2,991,488) and 0.43× of our four-GPU
+  vLLM arm at 1M (9,718,137). The trust seeding worked: the detached container
+  never prompted for the publisher.

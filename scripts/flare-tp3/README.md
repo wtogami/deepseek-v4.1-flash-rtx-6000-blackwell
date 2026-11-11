@@ -42,7 +42,18 @@ Background and expected deviations: [`results/flare-tp3-parked.md`](../../result
 ./scripts/flare-tp3/bench.sh --run --full   # + respect-eos, coding peak,
                                             # tool calls, long retrieval
 
-# 8. stop Flare and restore the vLLM engine
+# 8. the same cells this project uses for every other result (pinned
+#    llm-inference-bench v0.6.2, context-zero decode C1/C8, 5 windows)
+./scripts/flare-tp3/bench-baseline.sh --run
+
+# 9. write the comparison
+python3 scripts/flare-tp3/report.py \
+  --recipe results/flare-tp3-<stamp> \
+  --ours   results/flare-tp3-baseline-<stamp> \
+  --vllm   results/rebar325-cool-131072 \
+  --out    results/flare-tp3-<stamp>/REPORT.md
+
+# 10. stop Flare and restore the vLLM engine
 ./scripts/flare-tp3/serve.sh --stop
 ./start.sh
 ```
@@ -77,16 +88,30 @@ SHA-256 of the raw 32-byte verification key, namespace
 trust store accepts. The config directory is mounted at
 `/root/.config/flare`, so the acceptance persists across container runs.
 
-## Bench cells
+## Bench protocols
 
-Matches the recipe's published protocol: prefill from `--prefill-only`
-(standalone cold, `--prefill-metric client`) at 8K/32K/128K, decode with
-`--concurrency 1,4,8 --contexts 32k --duration 60` on the bench's `ignore_eos`
-default, then `tools/bench_steps.py` for steps/s and tokens/step.
-`tools/verify_fix.py 10` runs first: a non-zero corruption count means a
-FlashInfer TP3 patch is missing. `--full` adds the `--respect-eos` repeat
-(the recipe notes repetition loops in `ignore_eos` cells are a bench
-artifact), coding peak, `tool_calls.py 60 4`, and long retrieval at 128K/900K.
+Two runs, because they answer different questions:
+
+1. **Recipe protocol** (`bench.sh`, llm-inference-bench v0.9.1) reproduces the
+   cells the recipe's published numbers come from: cold prefill at
+   8K/32K/128K by client TTFT, decode at 32K context with concurrency
+   1/4/8 for 60 s, `ignore_eos` default, then `tools/bench_steps.py` for
+   steps/s and tokens/step. `tools/verify_fix.py 10` runs first: a non-zero
+   corruption count means a FlashInfer TP3 patch is missing. `--full` adds the
+   `--respect-eos` repeat (the recipe notes repetition loops in `ignore_eos`
+   cells are a bench artifact), coding peak, `tool_calls.py 60 4`, and long
+   retrieval at 128K/900K.
+2. **Our protocol** (`bench-baseline.sh`, the v0.6.2 pinned in `bench/`) runs
+   exactly the cells every other result directory in this project uses — five
+   30 s windows of cold 32K prefill and five windows of context-zero decode at
+   C1 and C8, `--respect-eos`, with `monitor.sh` sampling PCIe and clocks — so
+   `report.py` can put Flare on three GPUs against the four-GPU vLLM arm with
+   the same harness and the same cells.
+
+`report.py` merges both into one Markdown table set. Differences forced by the
+engine are listed in `bench-baseline.sh`: no vLLM `/metrics` gate, `--token-
+targeting estimate` because Flare exposes no `/tokenize`, no `--kv-budget`, no
+page-cache drops.
 
 ## Paths and knobs
 

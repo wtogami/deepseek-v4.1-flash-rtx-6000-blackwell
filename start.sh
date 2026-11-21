@@ -161,15 +161,24 @@ PY
 # RLIMIT_MEMLOCK hard limit: --ulimit memlock=-1:-1 (with IPC_LOCK) cannot raise
 # it above that. A finite ceiling below need_bytes dooms the URING backend with
 # "io_uring_register_buffers failed: Cannot allocate memory", so gate on it.
+#
+# Report MiB, not bytes. Python 3.15 (Fedora 45) made resource.RLIM_INFINITY a
+# positive value -- 2**64-1 on Linux -- where it used to be -1 (CPython gh-137044).
+# A raw byte count then reaches bash arithmetic as an unsigned 64-bit value, wraps
+# to -1, compares as "smaller than need_bytes" and divides to 0, which reads as a
+# 0 MiB ceiling even though ulimit -l says unlimited. Compare against the constant
+# and convert here so the guard never sees a value wider than a signed long.
 memlock_hard="$(python3 - <<'PY'
 import resource
 soft, hard = resource.getrlimit(resource.RLIMIT_MEMLOCK)
-print("unlimited" if hard == -1 else hard)
+unlimited = {-1, getattr(resource, 'RLIM_INFINITY', -1)}
+print('unlimited' if hard in unlimited else hard // (1 << 20))
 PY
 )"
-if [[ "$ENGRAM_TABLE_MEMORY" == ram && "$memlock_hard" != "unlimited" ]] && (( memlock_hard < need_bytes )); then
+need_mib=$(( (need_bytes + 1048575) / 1048576 ))
+if [[ "$ENGRAM_TABLE_MEMORY" == ram && "$memlock_hard" != "unlimited" ]] && (( memlock_hard < need_mib )); then
   { echo "Refusing to start: RAM Engram needs ~$((need_bytes / 1073741824)) GiB of locked memory,"
-    echo "but the host RLIMIT_MEMLOCK hard limit is $((memlock_hard / 1048576)) MiB."
+    echo "but the host RLIMIT_MEMLOCK hard limit is ${memlock_hard} MiB."
     echo "The container inherits this ceiling; --ulimit memlock=-1:-1 cannot raise it."
     echo ""
     echo "Fix (as root): prlimit --memlock=unlimited:unlimited -- runuser -u $(id -un) -- bash"

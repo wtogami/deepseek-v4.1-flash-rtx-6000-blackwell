@@ -143,6 +143,11 @@ not effective. If the ceiling is too low, the engine aborts at weight load with
 `start.sh` gates on this: it reads the host `RLIMIT_MEMLOCK` hard limit and
 refuses a doomed RAM-mode launch (printing the fix) instead of booting into the
 crash. Disk mode needs far less locked memory and is not gated the same way.
+The gate compares the limit against `resource.RLIM_INFINITY` rather than the
+literal `-1`, and converts to MiB before bash sees it: Python 3.15 (Fedora 45)
+reports infinity as `2**64-1` on Linux, and a raw byte count wraps negative in
+bash's signed 64-bit arithmetic, which would read as a 0 MiB ceiling even
+though `ulimit -l` says `unlimited`.
 
 The reliable fix is to raise the rlimit on the launching shell (as root; no
 reboot). `runuser` — unlike `su` — does not go through PAM, so it keeps the

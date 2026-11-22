@@ -66,6 +66,7 @@ Disk-backed Engram: `ENGRAM_TABLE_MEMORY=disk ./start.sh`.
 |---|---|---|
 | `ENGRAM_TABLE_MEMORY` | `ram` | `ram` or `disk`; never switched silently |
 | `MODEL_DIRECTORY` | `~/models/DeepSeek-V4.1-Flash` | flat checkpoint dir |
+| `MODEL_MOUNT_OPTS` | `ro,z` | mount options for the checkpoint; `ro` for a read-only share |
 | `MAX_MODEL_LEN` | `-1` | model default; cap the context with e.g. `131072` |
 | `MAX_NUM_SEQS` | `32` | request slots |
 | `MAX_NUM_BATCHED_TOKENS` | `4096` | |
@@ -81,6 +82,11 @@ Disk-backed Engram: `ENGRAM_TABLE_MEMORY=disk ./start.sh`.
 Measurement and tuning knobs (`TWOSHOT_MB`, `SHARE`, `FAIRNESS`,
 `POWER_LIMIT`, `ALLOW_POWER_MISMATCH`, `EXTRA_ARGS`) and the archived CSF
 variables are documented in [docs/OPERATIONS.md](docs/OPERATIONS.md).
+
+Sharing a checkpoint read-only (another user, a bind mount): set
+`MODEL_MOUNT_OPTS=ro`. The default `ro,z` asks podman to relabel the source for
+SELinux, which needs write access; `ro` skips that and is correct for files
+already labeled `container_file_t`.
 
 ## Troubleshooting
 

@@ -23,6 +23,17 @@ IMAGE_TAG="${IMAGE:-ghcr.io/local-inference-lab/vllm:karmic-kraken-beta}"
 PORT="${PORT:-8000}"
 BIND_ADDRESS="${BIND_ADDRESS:-0.0.0.0}"
 MODEL_DIRECTORY="${MODEL_DIRECTORY:-$HOME/models/DeepSeek-V4.1-Flash}"
+# Mount options for the checkpoint inside the container. The default relabels
+# the source for SELinux (`:z`), which needs write access to the checkpoint.
+# A checkpoint shared read-only with another user cannot be relabeled; set
+# MODEL_MOUNT_OPTS=ro. These files are already labeled container_file_t, so
+# `ro` is also the correct SELinux answer for a read-only share.
+MODEL_MOUNT_OPTS="${MODEL_MOUNT_OPTS:-ro,z}"
+case "$MODEL_MOUNT_OPTS" in
+  ro|ro,z|ro,Z|rw|rw,z|rw,Z) ;;
+  *) echo "MODEL_MOUNT_OPTS must be one of ro, ro,z, ro,Z, rw, rw,z, rw,Z (got: $MODEL_MOUNT_OPTS)" >&2
+     exit 2 ;;
+esac
 # CSF=1 serves the lossless FP4-CSF container instead of the original
 # checkpoint. The LIL launcher detects the container's manifest.json and
 # applies the mxfp4_csf quantization/load-format variant automatically.
@@ -197,7 +208,7 @@ OVERRIDE_SPEC='{"method":"dspark","attention_backend":"B12X","draft_sample_metho
 # lifecycle, no port bind) and print it. The launcher verifies the image
 # contract and the checkpoint identity before printing.
 if [[ "$DRY_RUN" == 1 ]]; then
-  echo "DRY_RUN=1: resolving the launch plan without starting the server" >&2
+  echo "DRY_RUN=1: resolving the launch plan without starting the server (model mount: $MODEL_MOUNT_OPTS)" >&2
   mkdir -p "$STATE_DIRECTORY"
   "$ENGINE" run --rm \
     -e PROFILE=ds41-flash -e HARDWARE_PROFILE=rtx-pro-6000-pcie \
@@ -207,7 +218,7 @@ if [[ "$DRY_RUN" == 1 ]]; then
     -e MAX_NUM_SEQS="$MAX_NUM_SEQS" -e MAX_NUM_BATCHED_TOKENS="$MAX_NUM_BATCHED_TOKENS" \
     -e GPU_MEMORY_UTILIZATION="$GPU_MEMORY_UTILIZATION" -e JIT_MONITOR_MODE="$JIT_MONITOR_MODE" \
     -e HF_HUB_OFFLINE=1 "${NCCL_ENV_ARGS[@]}" "${TWOSHOT_ARGS[@]}" "${SHARE_ARGS[@]}" -e GLOO_SOCKET_IFNAME=lo \
-    -v "$MODEL_DIRECTORY:/model:ro,z" \
+    -v "$MODEL_DIRECTORY:/model:$MODEL_MOUNT_OPTS" \
     -v "$STATE_DIRECTORY:/cache:z" \
     "$IMAGE_TAG" \
     --print-config \
@@ -433,7 +444,7 @@ echo "  driver: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>
 echo "  two-shot: TWOSHOT_MB=$TWOSHOT_MB (profile default is off; off restores it)" >&2
 echo "  max_model_len=$MAX_MODEL_LEN max_num_seqs=$MAX_NUM_SEQS max_num_batched_tokens=$MAX_NUM_BATCHED_TOKENS" >&2
 echo "  gpu_mem_util=$GPU_MEMORY_UTILIZATION jit_monitor=$JIT_MONITOR_MODE memory_limit=${MEMORY_LIMIT:-none}" >&2
-echo "  model=$MODEL_DIRECTORY state=$STATE_DIRECTORY listen=$BIND_ADDRESS:$PORT" >&2
+echo "  model=$MODEL_DIRECTORY mount=$MODEL_MOUNT_OPTS state=$STATE_DIRECTORY listen=$BIND_ADDRESS:$PORT" >&2
 
 mem_args=()
 [[ -n "$MEMORY_LIMIT" ]] && mem_args=(--memory "$MEMORY_LIMIT" --memory-swap "$MEMORY_LIMIT")
@@ -452,7 +463,7 @@ mem_args=()
   --ulimit stack=67108864:67108864 \
   --security-opt seccomp=unconfined \
   "${mem_args[@]}" \
-  -v "$MODEL_DIRECTORY:/model:ro,z" \
+  -v "$MODEL_DIRECTORY:/model:$MODEL_MOUNT_OPTS" \
   -v "$STATE_DIRECTORY:/cache:z" \
   -e PROFILE=ds41-flash -e HARDWARE_PROFILE=rtx-pro-6000-pcie \
   -e MODEL=/model -e ENGRAM_TABLE_MEMORY="$ENGRAM_TABLE_MEMORY" \

@@ -14,6 +14,7 @@ the short version; this file is the reference.
 | `GPU_MEMORY_UTILIZATION` | `0.95` | |
 | `JIT_MONITOR_MODE` | `warn` | |
 | `MODEL_DIRECTORY` | `~/models/DeepSeek-V4.1-Flash` | flat checkpoint dir |
+| `MODEL_MOUNT_OPTS` | `ro,z` | mount options for `/model`; set `ro` when the checkpoint is shared read-only (skips the SELinux relabel, which needs write access) |
 | `STATE_DIRECTORY` | `./state` | mounted at `/cache` (JIT + runtime state) |
 | `MEMORY_LIMIT` | `512g` | KK parity; empty disables |
 | `PORT` / `BIND_ADDRESS` | `8000` / `0.0.0.0` | host networking |
@@ -39,13 +40,25 @@ IPC_LOCK` + `--ulimit memlock=-1:-1` (Fedora's host ceiling is 8 MiB by
 default), `--ulimit stack=67108864:67108864`, `--security-opt
 seccomp=unconfined` (io_uring loader), `--init`, `--restart=unless-stopped`.
 
+### Read-only checkpoints
+
+The model is mounted with `MODEL_MOUNT_OPTS`, default `ro,z`. The `:z` suffix
+relabels the checkpoint for SELinux, which requires write access to the source;
+a checkpoint shared read-only with another user cannot be relabeled. Set
+`MODEL_MOUNT_OPTS=ro` in that case. The checkpoint files are already labeled
+`container_file_t`, so `ro` is also the correct SELinux answer. Everything the
+engine writes goes to `STATE_DIRECTORY`, not the checkpoint.
+
 ## Memlock
 
 The io_uring weight loader and the RAM Engram pin both charge against
 `RLIMIT_MEMLOCK`. Rootless podman cannot raise it above the host user's hard
 limit (8 MiB on a stock Fedora): `--ulimit memlock=-1:-1` is capped at that hard
 limit, not effective. If the ceiling is too low, the engine aborts at weight
-load with `io_uring_register_buffers: ENOMEM`.
+load with `io_uring_register_buffers: ENOMEM`. Disk mode lowers the RAM Engram
+requirement but not the loader's: the io_uring registered buffers still charge
+against the same limit, so the same ENOMEM can appear in disk mode with a stock
+8 MiB ceiling.
 
 `start.sh` gates on this: it reads the host `RLIMIT_MEMLOCK` hard limit and
 refuses a doomed RAM-mode launch (printing the fix) instead of booting into the

@@ -6,7 +6,7 @@
 # configuration on two values (top_p 1.0 vs 0.95, probabilistic vs greedy
 # draft sampling), so two native CLI overrides after the image pin the
 # measured values. Defaults here reflect this project's own measurements; see
-# README.md "Provenance and changes from the original recipe". DRY_RUN=1
+# docs/PROVENANCE.md. DRY_RUN=1
 # ./start.sh prints the launcher's resolved plan (--print-config) for auditing
 # without touching the GPUs.
 #
